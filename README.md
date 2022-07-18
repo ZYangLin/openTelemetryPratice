@@ -688,9 +688,17 @@ Jaeger 這邊的ip需要進入容器ifconfig出自己在容器內的ip，而不�
 Prometheus 也是
 ![](https://i.imgur.com/X0scX0u.png)
 
-最重 jaeger + Prometheus 大概長這樣。 當然還可以加入其他很多data source
+最終， jaeger + Prometheus 大概長這樣。 當然還可以加入其他很多data source
 ![](https://i.imgur.com/w01L5DK.jpg)
 
+
+## 結論
+
+以上主要針對openTelemetry的使用，並沒有太去深入了解那些後端的分析工具有哪些功能和相關的設定.....
+
+OpenTelemetry 可以去 exporter 遙測數據到負責 logs, traces, metrics 的各個分析工具來呈現出最貼近我們需求的，最全面的監控服務，並且在更動這些後端時不用怕需要去動到埋在client的代碼。
+
+或者，也可以考慮使用那些已經把 log, trace, metric 包在一起使用的工具平台，並且如果系統未來不太會有抽換後端監控服務的問題的話，我覺得好像就也不一定要使用openTelemetry了 :thinking_face: :thinking_face: :thinking_face: 
 
 
 
