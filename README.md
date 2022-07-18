@@ -702,4 +702,4 @@ OpenTelemetry 可以去 exporter 遙測數據到負責 logs, traces, metrics 的
 
 
 
-###### tags: `openTelemetry`, `Y.`
+###### tags: `openTelemetry`, `Dynatrace`, `Jaeger`, `Y.`
