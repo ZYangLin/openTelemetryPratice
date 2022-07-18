@@ -100,47 +100,598 @@ try {
 
 
 ## OpenTelemetry with Dynatrace
-### OpenTelemetry 和 Dynatrace 一起使用的時機情境
+### OpenTelemetry 和 Dynatrace 一起使用的時機與限制
+#### 時機
+- 當 Dynatrace 開箱即用沒有支援的技術時可以搭配 openTelemtry 來拓展監控的範圍
+- OpenTelemtry 支援span, metrics的客製化，因此兩者搭配起來可以使監控遙測的數據更加豐富化
 
-- 涉及完全託管雲服務的複雜雲原生監控環境僅將 OTLP 跟踪暴露為跨度，但不允許部署代理。
-- 工程團隊使用的技術，包括第三方函式庫和框架或編程語言，而 Dynatrace 開箱即用未涵蓋也不知如何檢測，但OpenTelemetry 會發出跟踪數據。
-- 由使用 OpenTelemetry 自定義檢測的開發團隊以通過項目特定的詳細信息豐富監控數據(例如，添加業務數據或捕獲特定於開發人員的診斷點)
+#### 限制
+- OneAgent replaces both the API-only and the SDK tracer. With OpenTelemetry Java enabled, existing tracers (such as Jaeger) will no longer see spans.
+- When both OneAgent and OpenTelemetry sensors are present for the same technology, you may experience the following limitations:
+    - Duplicate nodes in distributed traces
+    - Additional overhead
+- The OpenTelemetry Java sensor doesn't capture array-type attributes.
 
-### Demo
+### openTelemetry 與 Dynatrace 的相互使用有兩種模式
+#### In combination with OneAgent
+![](https://i.imgur.com/Uc2xvVA.png)
 
-- (系統參數說明](https://github.com/open-telemetry/opentelemetry-java/blob/main/sdk-extensions/autoconfigure/README.md)
-
-
-
-======================================================
-
-
-
-
-
-
-### Dynatrace with OpenTelemetry
-![](https://i.imgur.com/1b2mkpd.jpg)
-
-### Send data to Dynatrace with OpenTelemetry
-
-獲取 trace data
-
-- in combination with OneAgent
-
-
-- Instrument without OneAgent
+在 OneAgent code module 中啟用 OpenTelemetry integration
+- OneAgent 會自動挖掘 OpenTelemetry custom or pre-instrumentation 所產生的遙測數據並發送到 Dynatrace 平台。
+- 在 Dynatrace 介面中去啟用 OpenTelemetry Java 選項
+![](https://i.imgur.com/pEDWdb6.jpg)
 
 
 
-### Dynatrace free trial
-選擇數據中心
-![](https://i.imgur.com/43cfk4D.png)
-進入Dynatrace平台
-![](https://i.imgur.com/hdkV9qi.jpg)
-Download Dynatrace OneAgent
-![](https://i.imgur.com/H3JAVGa.png)
-選擇系統運行的作業系統環境
 
 
-## 
+
+#### Instrument without OneAgent
+![](https://i.imgur.com/6Y9psq9.png)
+
+該模式類似於先使用openTelemetry後導入Dyanatrace。用於無法由 
+1. OneAgent 代碼模塊檢測的服務的情況。 
+2. 或者要監控的組件已經以 OpenTelemetry 格式 (OTLP) expose 跟踪數據時
+
+
+可以通過 Dynatrace ActiveGate 上提供的 API 將 OTLP 格式的 OpenTelemetry 跟踪數據（跟踪和跨度）發送到 Dynatrace。攝取的跨度集成到 PurePath® 分佈式跟踪中。
+
+如果您要監控的服務已由 OneAgent 檢測，並且您希望通過 OpenTelemetry 獲得更多見解，請查看 OneAgent OpenTracing 和 OpenTelemetry 支持https://www.dynatrace.com/support/help/extend-dynatrace/extend-tracing/opentracing。
+
+How to instrument and send trace data to Dynatrace
+1. 使用 OpenTelemetry 檢測您的服務	
+    1. 使用openTelemetry agent
+    2. 使用環境變數指定protocol
+    3. 在 Dynatrace 查看監控數據是否導出
+2. 創建身份驗證令牌
+3. 配置 OpenTelemetry 導出器
+    1. 將 URL 和 Authorization token 寫在 otel-collector-config.yml
+    ![](https://i.imgur.com/L4sYLB2.jpg)
+    
+    api-token 設定於 Dynatrace SaaS 和 Dynatrace Managed 的 URL 會不同需注意
+    - Dynatrace SaaS:  https://{your-environment-id}.live.dynatrace.com/api/v2/otlp/v1/traces
+    - Dynatrace Managed:  https://{your-domain}/e/{your-environment-id}/api/v2/otlp/v1/traces
+
+4. 登入Dynatrace，驗證跟踪是否傳送到 Dynatrace
+5. (可選)配置數據捕獲以滿足隱私要求
+![](https://i.imgur.com/9TCWK87.png)
+
+6. (可選)通過指標檢查攝取的跟踪量
+
+
+
+
+
+
+## Demo
+
+### Demo1
+
+Step1. Have a project
+我使用網路上的open proj "[PetClinic](https://github.com/spring-projects/spring-petclinic)"
+
+Step2. Download [Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases)
+
+Step3. Export to [Jaeger](https://www.jaegertracing.io/docs/1.6/getting-started/)
+> docker run -d --name jaeger  -e COLLECTOR_ZIPKIN_HOST_PORT=:9411  -p 5775:5775/udp  -p 6831:6831/udp  -p 6832:6832/udp  -p 5778:5778  -p 16686:16686  -p 14250:14250  -p 14268:14268  -p 14269:14269  -p 9411:9411  jaegertracing/all-in-one:1.32
+
+
+Step4. run command: 
+> OTEL_SERVICE_NAME=my-service OTEL_TRACES_EXPORTER=jaeger OTEL_EXPORTER_JAEGER_ENDPOINT=http://localhost:14250 java -javaagent:./opentelemetry-javaagent.jar -jar target/*.jar
+
+
+
+Step5. view [local webSite](http://localhost:9000/owners?lastName=) and [Jaeger UI](http://localhost:16686/)
+
+
+- [系統參數說明](https://github.com/open-telemetry/opentelemetry-java/blob/main/sdk-extensions/autoconfigure/README.md)
+
+
+### Demo2
+
+Step1. Have a project(接續前一個範例使用的專案)
+
+Step2. Download Java agent
+
+Step3. docker-compose up containers
+
+Step4. run command: 
+> OTEL_RESOURCE_ATTRIBUTES=service.name=my-service OTEL_TRACES_EXPORTER=otlp OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4317 OTEL_EXPORTER_OTLP_PROTOCOL=grpc OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc  java -javaagent:./opentelemetry-javaagent.jar -jar target/*.jar
+
+Step5. view tools([Jaeger](http://localhost:16686/search), [Prometheus](http://localhost:9090/graph), [Grafana](http://localhost:3000/?orgId=1), ) and [website](http://localhost:9000/)
+
+
+#### Collector 設定 
+**docker-compose.yml**
+```dockerfile= docker-compose.yml
+version: "3"
+
+services:
+  mysql:
+    image: mysql:5.7
+    platform: "linux/amd64"
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=
+      - MYSQL_ALLOW_EMPTY_PASSWORD=true
+      - MYSQL_USER=petclinic
+      - MYSQL_PASSWORD=petclinic
+      - MYSQL_DATABASE=petclinic
+    volumes:
+      - "./conf.d:/etc/mysql/conf.d:ro"
+  postgres:
+    image: postgres:14.1
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=petclinic
+      - POSTGRES_USER=petclinic
+      - POSTGRES_DB=petclinic
+  node-exporter:
+    image: prom/node-exporter:v1.2.2
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--no-collector.arp'
+      - '--no-collector.netstat'
+      - '--no-collector.netdev'
+      - '--no-collector.softnet'
+
+##################################
+# OpenTelemetry      
+  # Jaeger
+  jaeger-all-in-one:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+  
+  # Zipkin
+  zipkin-all-in-one:
+    image: openzipkin/zipkin:latest
+    ports:
+      - "9411:9411"
+  
+  # Prometheus
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  # Grafana
+  grafana:
+    container_name: grafana
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+
+  # Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib-dev:latest
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "1888:1888"   # pprof extension
+      - "8888:8888"   # Prometheus metrics exposed by the collector
+      - "8889:8889"   # Prometheus exporter metrics
+      - "13133:13133" # health_check extension
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"
+      - "55679:55679" # zpages extension
+    depends_on:
+      - jaeger-all-in-one
+      - zipkin-all-in-one
+      - prometheus
+```
+---
+**otel-collector-config.yml**
+```yaml= otel-collector-config.yml
+#負責接受數據，格式有 grpc, jaeger, zipkin
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      #http:
+#負責資料清洗，過濾
+processors:
+  batch:
+
+#負責設定最後遙測數據要傳送到哪邊去
+exporters:
+  # OTLP
+  otlp:
+    endpoint: otelcol:4317
+  # Data sources: traces
+  zipkin:
+    endpoint: "http://zipkin-all-in-one:9411/api/v2/spans"
+  # Data sources: traces, metrics, logs
+  logging:
+    loglevel: debug
+  # Data sources: traces
+  jaeger:
+    endpoint: "jaeger-all-in-one:14250"
+    tls:
+      insecure: true
+  # Prometheus
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      label1: value1
+
+extensions:
+  health_check:
+  pprof:
+  zpages:
+
+#在上面將要接收、處理、和產出的參數設定後，最後要在這邊做最後的enable
+service:
+  extensions: [health_check,pprof,zpages]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, prometheus]
+```
+
+#### Jaeger
+初始畫面，在此一個直觀的觀察方式是右上角的圓點越大顆代表所花費的時間越多，通常也是要處理的問題所在處
+![](https://i.imgur.com/LttoSj5.jpg)
+
+針對每個tree進入，會看到瀑布狀的鏈路追蹤
+![](https://i.imgur.com/VqzCESn.jpg)
+
+jaeger 內除了 Trace Timeline 也有 json 可以看
+:::info
+OpenTelemetry 中，一個trace可代表一個rq到rp間的所有操作。所以一個tree裡面會有多個span，而所有spans共用一個 traceID，來達到將他們標示為一個tree的概念。另外spans會有父子以及兄弟的關係，child-span會標註ref spanID的方式來連接到父親span
+:::
+
+```json=
+{
+    "data": [
+        {
+            "traceID": "edc74b88be0af659a08043f60130bb77",
+            "spans": [
+                {
+                    "traceID": "edc74b88be0af659a08043f60130bb77",
+                    "spanID": "9734abd03fb3038f",
+                    "operationName": "OwnerController.initFindForm",
+                    "references": [
+                        {
+                            "refType": "CHILD_OF",
+                            "traceID": "edc74b88be0af659a08043f60130bb77",
+                            "spanID": "e16536121b7a1d19"
+                        }
+                    ],
+                    "startTime": 1658132533091033,
+                    "duration": 9185,
+                    "tags": [
+                        {
+                            "key": "otel.library.name",
+                            "type": "string",
+                            "value": "io.opentelemetry.spring-webmvc-3.1"
+                        },
+                        {
+                            "key": "otel.library.version",
+                            "type": "string",
+                            "value": "1.14.0-alpha"
+                        },
+                        {
+                            "key": "thread.id",
+                            "type": "int64",
+                            "value": 137
+                        },
+                        {
+                            "key": "thread.name",
+                            "type": "string",
+                            "value": "http-nio-9000-exec-4"
+                        },
+                        {
+                            "key": "span.kind",
+                            "type": "string",
+                            "value": "internal"
+                        },
+                        {
+                            "key": "internal.span.format",
+                            "type": "string",
+                            "value": "proto"
+                        }
+                    ],
+                    "logs": [],
+                    "processID": "p1",
+                    "warnings": null
+                },
+                {
+                    "traceID": "edc74b88be0af659a08043f60130bb77",
+                    "spanID": "94160f40b9405837",
+                    "operationName": "Render owners/findOwners",
+                    "references": [
+                        {
+                            "refType": "CHILD_OF",
+                            "traceID": "edc74b88be0af659a08043f60130bb77",
+                            "spanID": "e16536121b7a1d19"
+                        }
+                    ],
+                    "startTime": 1658132533100310,
+                    "duration": 152087,
+                    "tags": [
+                        {
+                            "key": "otel.library.name",
+                            "type": "string",
+                            "value": "io.opentelemetry.spring-webmvc-3.1"
+                        },
+                        {
+                            "key": "otel.library.version",
+                            "type": "string",
+                            "value": "1.14.0-alpha"
+                        },
+                        {
+                            "key": "thread.id",
+                            "type": "int64",
+                            "value": 137
+                        },
+                        {
+                            "key": "thread.name",
+                            "type": "string",
+                            "value": "http-nio-9000-exec-4"
+                        },
+                        {
+                            "key": "span.kind",
+                            "type": "string",
+                            "value": "internal"
+                        },
+                        {
+                            "key": "internal.span.format",
+                            "type": "string",
+                            "value": "proto"
+                        }
+                    ],
+                    "logs": [],
+                    "processID": "p1",
+                    "warnings": null
+                },
+                {
+                    "traceID": "edc74b88be0af659a08043f60130bb77",
+                    "spanID": "e16536121b7a1d19",
+                    "operationName": "/owners/find",
+                    "references": [],
+                    "startTime": 1658132533075689,
+                    "duration": 178314,
+                    "tags": [
+                        {
+                            "key": "otel.library.name",
+                            "type": "string",
+                            "value": "io.opentelemetry.tomcat-7.0"
+                        },
+                        {
+                            "key": "otel.library.version",
+                            "type": "string",
+                            "value": "1.14.0-alpha"
+                        },
+                        {
+                            "key": "http.target",
+                            "type": "string",
+                            "value": "/owners/find"
+                        },
+                        {
+                            "key": "http.flavor",
+                            "type": "string",
+                            "value": "1.1"
+                        },
+                        {
+                            "key": "thread.id",
+                            "type": "int64",
+                            "value": 137
+                        },
+                        {
+                            "key": "net.transport",
+                            "type": "string",
+                            "value": "ip_tcp"
+                        },
+                        {
+                            "key": "net.peer.ip",
+                            "type": "string",
+                            "value": "0:0:0:0:0:0:0:1"
+                        },
+                        {
+                            "key": "thread.name",
+                            "type": "string",
+                            "value": "http-nio-9000-exec-4"
+                        },
+                        {
+                            "key": "http.host",
+                            "type": "string",
+                            "value": "localhost:9000"
+                        },
+                        {
+                            "key": "http.status_code",
+                            "type": "int64",
+                            "value": 200
+                        },
+                        {
+                            "key": "http.route",
+                            "type": "string",
+                            "value": "/owners/find"
+                        },
+                        {
+                            "key": "http.user_agent",
+                            "type": "string",
+                            "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+                        },
+                        {
+                            "key": "http.method",
+                            "type": "string",
+                            "value": "GET"
+                        },
+                        {
+                            "key": "net.peer.port",
+                            "type": "int64",
+                            "value": 50777
+                        },
+                        {
+                            "key": "http.scheme",
+                            "type": "string",
+                            "value": "http"
+                        },
+                        {
+                            "key": "span.kind",
+                            "type": "string",
+                            "value": "server"
+                        },
+                        {
+                            "key": "internal.span.format",
+                            "type": "string",
+                            "value": "proto"
+                        }
+                    ],
+                    "logs": [],
+                    "processID": "p1",
+                    "warnings": null
+                }
+            ],
+            "processes": {
+                "p1": {
+                    "serviceName": "my-service",
+                    "tags": [
+                        {
+                            "key": "host.arch",
+                            "type": "string",
+                            "value": "x86_64"
+                        },
+                        {
+                            "key": "host.name",
+                            "type": "string",
+                            "value": "LINs-MacBook-Pro.local"
+                        },
+                        {
+                            "key": "os.description",
+                            "type": "string",
+                            "value": "Mac OS X 12.3"
+                        },
+                        {
+                            "key": "os.type",
+                            "type": "string",
+                            "value": "darwin"
+                        },
+                        {
+                            "key": "process.command_line",
+                            "type": "string",
+                            "value": "/Library/Java/JavaVirtualMachines/jdk-11.0.15+10 2/Contents/Home:bin:java -javaagent:./opentelemetry-javaagent.jar"
+                        },
+                        {
+                            "key": "process.executable.path",
+                            "type": "string",
+                            "value": "/Library/Java/JavaVirtualMachines/jdk-11.0.15+10 2/Contents/Home:bin:java"
+                        },
+                        {
+                            "key": "process.pid",
+                            "type": "int64",
+                            "value": 61090
+                        },
+                        {
+                            "key": "process.runtime.description",
+                            "type": "string",
+                            "value": "Eclipse Adoptium OpenJDK 64-Bit Server VM 11.0.15+10"
+                        },
+                        {
+                            "key": "process.runtime.name",
+                            "type": "string",
+                            "value": "OpenJDK Runtime Environment"
+                        },
+                        {
+                            "key": "process.runtime.version",
+                            "type": "string",
+                            "value": "11.0.15+10"
+                        },
+                        {
+                            "key": "telemetry.auto.version",
+                            "type": "string",
+                            "value": "1.14.0"
+                        },
+                        {
+                            "key": "telemetry.sdk.language",
+                            "type": "string",
+                            "value": "java"
+                        },
+                        {
+                            "key": "telemetry.sdk.name",
+                            "type": "string",
+                            "value": "opentelemetry"
+                        },
+                        {
+                            "key": "telemetry.sdk.version",
+                            "type": "string",
+                            "value": "1.14.0"
+                        }
+                    ]
+                }
+            },
+            "warnings": null
+        }
+    ],
+    "total": 0,
+    "limit": 0,
+    "offset": 0,
+    "errors": null
+}
+```
+
+
+#### Prometheus
+Prometheus 為監控數據裡面metrics的那一面向，所以所顯示的資訊偏向系統cpu或記憶體空間等。 Prometheus 可搭配系統監測，讓我們監控系統健康度，並設定觸發警示條件通知我們來處理問題。
+
+**prometheus.yml**
+```yaml= prometheus.yml
+# 全域設定
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+scrape_configs:
+  - job_name: 'otel-collector'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['otel-collector:8889']
+      - targets: ['otel-collector:8888']
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+  
+```
+
+#### Grafana
+> 感覺偏向一個可以彙整眾多工具的平台，在grafana中可以藉由設定data source的方式來轉到出 jaeger, prometheus等遙測數據到此處
+
+![](https://i.imgur.com/KUZBIbj.png)
+
+Jaeger 這邊的ip需要進入容器ifconfig出自己在容器內的ip，而不是local host ip
+![](https://i.imgur.com/MB8gVE0.png)
+
+Prometheus 也是
+![](https://i.imgur.com/X0scX0u.png)
+
+最重 jaeger + Prometheus 大概長這樣。 當然還可以加入其他很多data source
+![](https://i.imgur.com/w01L5DK.jpg)
+
+
+
+
+###### tags: `openTelemetry`, `Y.`
